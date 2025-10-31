@@ -1,0 +1,141 @@
+---
+title: "Wine_analysisMiniPro"
+author: "Ally"
+date: "2025-04-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install_if_missing <- function(package) {
+  if (!requireNamespace(package, quietly = TRUE)) {
+    install.packages(package)
+  }
+}
+
+# List of packages to ensure they are installed
+packages <- c("lme4", "ggplot2", "dplyr", "caret", "MuMIn", "readr", "reshape2")
+
+# Install any missing packages
+for (package in packages) {
+  install_if_missing(package)
+}
+
+# 2. Load Necessary Libraries
+library(lme4)
+library(ggplot2) 
+library(dplyr) 
+library(caret)  
+library(MuMIn)
+library(readr)
+library(reshape2)
+```
+
+```{r}
+wine_data <- read.table("winequality-white.csv", 
+                         header = TRUE, 
+                         sep = ";")
+head(wine_data)
+```
+
+```{r}
+wine_data <- na.omit(wine_data)
+wine_data_scaled <- wine_data
+wine_data_scaled$volatile.acidity <- scale(wine_data$volatile.acidity)
+wine_data_scaled$citric.acid <- scale(wine_data$citric.acid)
+wine_data_scaled$residual.sugar <- scale(wine_data$residual.sugar)
+wine_data_scaled$chlorides <- scale(wine_data$chlorides)
+wine_data_scaled$free.sulfur.dioxide <- scale(wine_data$free.sulfur.dioxide)
+wine_data_scaled$total.sulfur.dioxide <- scale(wine_data$total.sulfur.dioxide)
+wine_data_scaled$density <- scale(wine_data$density)
+wine_data_scaled$pH <- scale(wine_data$pH)
+```
+
+```{r}
+str(wine_data)
+
+# Create the categorical Quality_Cat variable from the original quality scores
+wine_data$Quality_Cat <- cut(wine_data$quality, breaks = c(-Inf, 4, 6, Inf), 
+                              labels = c("Low", "Medium", "High"), right = FALSE)
+
+# Check if the new Quality_Cat variable has been created correctly
+table(wine_data$Quality_Cat)  # Should not return table of extent 0
+
+# Scale the relevant predictors (this creates the scaled version of the data)
+wine_data_scaled <- wine_data %>%
+  mutate(across(c(volatile.acidity, citric.acid, residual.sugar, 
+                  chlorides, free.sulfur.dioxide, total.sulfur.dioxide, 
+                  density, pH), scale))
+```
+
+```{r}
+
+full_model <- lmer(quality ~ volatile.acidity + citric.acid + residual.sugar + 
+                           chlorides + free.sulfur.dioxide + total.sulfur.dioxide + 
+                           density + pH + (1 | Quality_Cat), 
+                           data = wine_data_scaled)
+
+summary(full_model)
+```
+
+```{r}
+isSingular(full_model)
+```
+
+```{r}
+cor_matrix <- cor(wine_data %>% select(fixed.acidity, volatile.acidity, citric.acid, 
+                                        residual.sugar, chlorides, free.sulfur.dioxide, 
+                                        total.sulfur.dioxide, density, pH, alcohol, quality), 
+                 use = "complete.obs")
+print(cor_matrix)
+```
+
+```{r}
+cor_matrix_melted <- melt(cor_matrix)
+
+# Create the heatmap
+ggplot(cor_matrix_melted, aes(Var1, Var2, fill = value)) +
+    geom_tile() +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                         midpoint = 0, limit = c(-1, 1), name="Correlation") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Correlation Matrix Heatmap",
+         x = "Variables",
+         y = "Variables")
+```
+
+```{r}
+model1 <- lmer(quality ~ volatile.acidity + (1 | Quality_Cat), data = wine_data_scaled)
+model2 <- lmer(quality ~ citric.acid + (1 | Quality_Cat), data = wine_data_scaled)
+model3 <- lmer(quality ~ residual.sugar + (1 | Quality_Cat), data = wine_data_scaled)
+model4 <- lmer(quality ~ chlorides + (1 | Quality_Cat), data = wine_data_scaled)
+model5 <- lmer(quality ~ free.sulfur.dioxide + (1 | Quality_Cat), data = wine_data_scaled)
+model6 <- lmer(quality ~ total.sulfur.dioxide + (1 | Quality_Cat), data = wine_data_scaled)
+model7 <- lmer(quality ~ density + (1 | Quality_Cat), data = wine_data_scaled)
+model8 <- lmer(quality ~ pH + (1 | Quality_Cat), data = wine_data_scaled)
+
+# Compare models based on AIC
+models_list <- list(model1, model2, model3,model4,model5,model6,model7,model8)
+aic_values <- sapply(models_list, AIC)
+names(aic_values) <- c("Model 1", "Model 2", "Model 3","Model 4","Model 5","Model 6","Model 7","Model 8")
+print(aic_values)
+```
+```
+Model 7 has the lowest AIC (7293.879), making it the best-performing model among those fitted.
+```
+
+```{r}
+baseline_model <- lmer(quality ~ density + (1 | Quality_Cat), data = wine_data_scaled)
+
+# Summary of the baseline model
+summary(baseline_model)
+```
+
+```{r}
+qqnorm(residuals(baseline_model))
+qqline(residuals(baseline_model), col = "red")  # Adds the reference line
+```
